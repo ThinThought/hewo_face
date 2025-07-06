@@ -176,8 +176,9 @@ class MultimediaGameObj(Multimedia):
         autoplay: bool = False,
     ):
         self.rect = pygame.Rect(position, (0, 0))
-        self.is_playing = autoplay
         super().__init__(filepath, loop=loop, audio=audio, target_size=size, object_name=object_name)
+        if autoplay:
+            self.play()
         self.rect.topleft = position
         self.velocity = pygame.Vector2(velocity)
 
@@ -197,7 +198,11 @@ class MultimediaLayout:
     def __init__(self, settings):
         self.logger = create_logger(settings['object_name'])
         self.bg_color = settings['bg_color']
-        self.objects = settings['objects']
+        self.objects = []
+        self.object_description = settings['objects']
+        for obj in self.object_description:
+            obj = MultimediaGameObj(**obj) if isinstance(obj, dict) else obj
+            self.objects.append(obj)
 
     def add_object(self, obj: MultimediaGameObj):
         self.objects.append(obj)

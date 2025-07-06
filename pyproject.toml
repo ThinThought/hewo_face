@@ -36,6 +36,7 @@ dependencies = [
 
 [project.scripts]
 hewo_face_main = "hewo.main.main:main"
+haru_eyes = "hewo.main.haru_layout:main"
 
 [tool.setuptools.packages.find]
 include = ["hewo", "hewo.*"]
@@ -44,3 +45,5 @@ include = ["hewo", "hewo.*"]
 "hewo.settings.hewo" = ["*.yaml"]
 "hewo.settings.window" = ["*.yaml"]
 "hewo.settings.multimedia" = ["*.yaml"]
+"hewo.settings.hwindow" = ["*.yaml"]
+"hewo.settings.haru" = ["*.yaml"]
