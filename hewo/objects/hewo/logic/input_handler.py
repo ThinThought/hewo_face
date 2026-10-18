@@ -45,7 +45,7 @@ class HeWoInputHandler:
             pygame.K_d, pygame.K_f, pygame.K_g, pygame.K_h, pygame.K_j, pygame.K_k,
             pygame.K_l, pygame.K_z, pygame.K_x, pygame.K_c
         ]
-        parameters = list(self.mapper.emotion_goal.keys())
+        parameters = self.mapper.keys
 
         for key, param in zip(keys, parameters):
             self.key_pressed_mappings[key] = lambda p=param: self.adjust_emotion(p)
@@ -56,11 +56,9 @@ class HeWoInputHandler:
         self.hewo.logger.debug(f"Mode toggled to: {mode}")
 
     def adjust_emotion(self, param):
-        if self.increase_mode:
-            self.mapper.emotion_goal[param] = min(100, self.mapper.emotion_goal[param] + self.mapper.emotion_step)
-        else:
-            self.mapper.emotion_goal[param] = max(0, self.mapper.emotion_goal[param] - self.mapper.emotion_step)
-        self.hewo.logger.debug(f"Adjusted {param} to {self.mapper.emotion_goal[param]}")
+        delta = self.mapper.emotion_step if self.increase_mode else -self.mapper.emotion_step
+        value = self.mapper.adjust_goal(param, delta)
+        self.hewo.logger.debug(f"Adjusted {param} to {value}")
 
     def adjust_position(self, dx, dy):
         position = self.hewo.position

@@ -1,9 +1,14 @@
 import os
 import shutil
 import subprocess
+from importlib import import_module
 import pygame
-import cv2
 from hewo.settings import create_logger
+
+
+def _load_cv2():
+    """Load OpenCV only when video playback is actually requested."""
+    return import_module("cv2")
 
 
 class Multimedia:
@@ -21,6 +26,7 @@ class Multimedia:
         target_size: tuple[int, int] | None = None,
         object_name: str = "Multimedia",
     ):
+        self.object_name = object_name
         self.logger = create_logger(object_name)
         if not os.path.exists(filepath):
             raise FileNotFoundError(filepath)
@@ -32,6 +38,7 @@ class Multimedia:
 
         self.audio_mode: str | None = None
         self.audio_proc: subprocess.Popen | None = None
+        self._cv2 = None
 
         self.is_playing = False
         self.finished = False
@@ -70,7 +77,7 @@ class Multimedia:
             self.audio_proc = subprocess.Popen(args)
 
     def _stop_audio(self):
-        if self.audio_mode == "ffplay" and self.audio_proc is not None:
+        if getattr(self, "audio_mode", None) == "ffplay" and getattr(self, "audio_proc", None) is not None:
             self.audio_proc.kill()
             self.audio_proc = None
 
@@ -83,14 +90,14 @@ class Multimedia:
         self.surface = pygame.image.load(path).convert_alpha()
         self.rect = self.surface.get_rect()
         self._apply_target_size()
-        self.original_surface = self.surface.copy()
         self.logger.info(f"Loaded image {path} size={self.rect.size}")
 
     def _load_video(self, path):
-        self.cap = cv2.VideoCapture(path)
+        self._cv2 = _load_cv2()
+        self.cap = self._cv2.VideoCapture(path)
         if not self.cap.isOpened():
             raise RuntimeError(f"Failed to open video {path}")
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+        self.fps = self.cap.get(self._cv2.CAP_PROP_FPS) or 30.0
         self.frame_interval = 1000 / self.fps
         success, frame = self.cap.read()
         if not success:
@@ -101,14 +108,25 @@ class Multimedia:
         self.logger.info(f"Loaded video {path} fps={self.fps:.1f}")
 
     def _frame_to_surface(self, frame):
+        cv2 = getattr(self, "_cv2", None) or _load_cv2()
         prev_pos = getattr(self, "rect", pygame.Rect(0, 0, 0, 0)).topleft
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
         h, w = frame.shape[:2]
-        surface = pygame.image.frombuffer(frame.tobytes(), (w, h), "RGBA")
-        self.surface = surface.convert_alpha()
+
+        # Resize while pixels are still in OpenCV's native BGR format. This
+        # avoids scaling a full-resolution Pygame surface for every video frame.
+        if self.target_size and (w, h) != self.target_size:
+            target_w, target_h = map(int, self.target_size)
+            shrinking = target_w < w or target_h < h
+            interpolation = cv2.INTER_AREA if shrinking else cv2.INTER_LINEAR
+            frame = cv2.resize(frame, (target_w, target_h), interpolation=interpolation)
+            h, w = frame.shape[:2]
+
+        if not frame.flags.c_contiguous:
+            frame = frame.copy()
+        # The BGR buffer is accepted directly by Pygame; convert() detaches it
+        # from the temporary OpenCV frame and targets the display pixel format.
+        self.surface = pygame.image.frombuffer(frame, (w, h), "BGR").convert()
         self.rect = self.surface.get_rect(topleft=prev_pos)
-        self._apply_target_size()
-        self.original_surface = self.surface.copy()
 
     def update(self, dt_ms: float):
         if self.media_type == "image" or not self.is_playing or self.finished:
@@ -120,7 +138,7 @@ class Multimedia:
             success, frame = self.cap.read()
             if not success:
                 if self.loop:
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    self.cap.set(self._cv2.CAP_PROP_POS_FRAMES, 0)
                     success, frame = self.cap.read()
                     if not success:
                         self.finished = True
@@ -153,10 +171,16 @@ class Multimedia:
     def stop(self):
         self.is_playing = False
         if self.media_type == "video":
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.cap.set(self._cv2.CAP_PROP_POS_FRAMES, 0)
             self.timer = 0.0
             self.finished = False
         self._stop_audio()
+
+    def close(self):
+        """Stop playback and release the decoder and audio resources."""
+        self.stop()
+        if self.media_type == "video" and self.cap.isOpened():
+            self.cap.release()
 
     def __del__(self):
         self._stop_audio()
@@ -196,6 +220,7 @@ class MultimediaGameObj(Multimedia):
 
 class MultimediaLayout:
     def __init__(self, settings):
+        self.clears_surface = True
         self.logger = create_logger(settings['object_name'])
         self.bg_color = settings['bg_color']
         self.objects = []
@@ -210,7 +235,7 @@ class MultimediaLayout:
     def remove_object(self, obj: MultimediaGameObj):
         if obj in self.objects:
             self.objects.remove(obj)
-            obj.stop()
+            obj.close()
 
     def handle_event(self, event):
         for obj in self.objects:
@@ -263,3 +288,8 @@ class MultimediaLayout:
         if obj:
             self.remove_object(obj)
             self.logger.info(f"Removed '{name}'")
+
+    def close(self):
+        """Release resources held by every media object in this layout."""
+        for obj in self.objects:
+            obj.close()

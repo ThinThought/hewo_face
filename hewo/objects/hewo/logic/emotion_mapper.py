@@ -1,75 +1,121 @@
+"""Canonical schema and transfer between emotion values and face components."""
+
 import random
+import math
+from collections.abc import Mapping
+
+
+EMOTION_KEYS = (
+    "letl_a", "letl_b", "letl_c", "lps", "lebl_a", "lebl_b", "lebl_c",
+    "retl_a", "retl_b", "retl_c", "rps", "rebl_a", "rebl_b", "rebl_c",
+    "tl_a", "tl_b", "tl_c", "tl_d", "tl_e",
+    "bl_a", "bl_b", "bl_c", "bl_d", "bl_e",
+)
+
+DEFAULT_EMOTION = dict(zip(EMOTION_KEYS, (
+    0, 0, 0, 100, 0, 0, 0,
+    0, 0, 0, 100, 0, 0, 0,
+    0, 0, 100, 0, 0,
+    0, 0, 100, 0, 0,
+)))
+
 
 class EmotionMapper:
+    """Owns the validated emotion goal and maps it to/from face components.
+
+    Partial goal updates are supported; omitted parameters retain their current
+    goal. Returned mappings are copies so callers cannot mutate state by alias.
+    """
+
+    keys = EMOTION_KEYS
+
     def __init__(self, emotion_step=5):
+        if emotion_step <= 0:
+            raise ValueError("emotion_step must be positive")
         self.emotion_step = emotion_step
-        self.initial_emotion = [
-            0, 0, 0, 100, 0, 0, 0,
-            0, 0, 0, 100, 0, 0, 0,
-            0, 0, 100, 0, 0, 0, 0, 100, 0, 0
-        ]
-        self.emotion_goal = self.emotion_dict_from_values(self.initial_emotion)
+        self.initial_emotion = dict(DEFAULT_EMOTION)
+        self._emotion_goal = dict(DEFAULT_EMOTION)
+
+    @property
+    def emotion_goal(self):
+        return dict(self._emotion_goal)
+
+    @emotion_goal.setter
+    def emotion_goal(self, values):
+        self.set_goal(values)
+
+    @staticmethod
+    def _normalize_value(key, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Emotion value for '{key}' must be numeric")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(f"Emotion value for '{key}' must be numeric")
+        normalized = max(0, min(100, value))
+        return int(normalized) if float(normalized).is_integer() else normalized
+
+    def set_goal(self, values):
+        if not isinstance(values, Mapping):
+            raise ValueError("Emotion goal must be a mapping")
+        unknown = set(values) - set(self.keys)
+        if unknown:
+            raise ValueError(f"Unknown emotion parameter(s): {', '.join(sorted(unknown))}")
+        normalized = {key: self._normalize_value(key, value) for key, value in values.items()}
+        self._emotion_goal.update(normalized)
+        return self.emotion_goal
+
+    def adjust_goal(self, key, delta):
+        if key not in self._emotion_goal:
+            raise ValueError(f"Unknown emotion parameter: {key}")
+        return self.set_goal({key: self._emotion_goal[key] + delta})[key]
 
     def emotion_dict_from_values(self, values):
-        keys = [
-            'letl_a', 'letl_b', 'letl_c', 'lps',
-            'lebl_a', 'lebl_b', 'lebl_c',
-            'retl_a', 'retl_b', 'retl_c', 'rps',
-            'rebl_a', 'rebl_b', 'rebl_c',
-            'tl_a', 'tl_b', 'tl_c', 'tl_d', 'tl_e',
-            'bl_a', 'bl_b', 'bl_c', 'bl_d', 'bl_e'
-        ]
-        return dict(zip(keys, values))
+        if len(values) != len(self.keys):
+            raise ValueError(f"Expected {len(self.keys)} emotion values, received {len(values)}")
+        return {key: self._normalize_value(key, value) for key, value in zip(self.keys, values)}
 
     def get_emotion(self, hewo):
         letl, lps, lebl = hewo.left_eye.get_emotion()
         retl, rps, rebl = hewo.right_eye.get_emotion()
         tl, bl = hewo.mouth.get_emotion()
-        return {
-            'letl_a': letl[0], 'letl_b': letl[1], 'letl_c': letl[2],
-            'lps': lps,
-            'lebl_a': lebl[0], 'lebl_b': lebl[1], 'lebl_c': lebl[2],
-            'retl_a': retl[0], 'retl_b': retl[1], 'retl_c': retl[2],
-            'rps': rps,
-            'rebl_a': rebl[0], 'rebl_b': rebl[1], 'rebl_c': rebl[2],
-            'tl_a': tl[0], 'tl_b': tl[1], 'tl_c': tl[2], 'tl_d': tl[3], 'tl_e': tl[4],
-            'bl_a': bl[0], 'bl_b': bl[1], 'bl_c': bl[2], 'bl_d': bl[3], 'bl_e': bl[4]
-        }
+        values = (*letl, lps, *lebl, *retl, rps, *rebl, *tl, *bl)
+        return dict(zip(self.keys, values))
 
     def set_emotion(self, hewo, emotion_dict):
-        letl = [emotion_dict['letl_a'], emotion_dict['letl_b'], emotion_dict['letl_c']]
-        lps = emotion_dict['lps']
-        lebl = [emotion_dict['lebl_a'], emotion_dict['lebl_b'], emotion_dict['lebl_c']]
-        retl = [emotion_dict['retl_a'], emotion_dict['retl_b'], emotion_dict['retl_c']]
-        rps = emotion_dict['rps']
-        rebl = [emotion_dict['rebl_a'], emotion_dict['rebl_b'], emotion_dict['rebl_c']]
-        tl = [emotion_dict['tl_a'], emotion_dict['tl_b'], emotion_dict['tl_c'], emotion_dict['tl_d'], emotion_dict['tl_e']]
-        bl = [emotion_dict['bl_a'], emotion_dict['bl_b'], emotion_dict['bl_c'], emotion_dict['bl_d'], emotion_dict['bl_e']]
-        hewo.left_eye.set_emotion(letl, lps, lebl)
-        hewo.right_eye.set_emotion(retl, rps, rebl)
-        hewo.mouth.set_emotion(tl, bl)
+        values = self.emotion_dict_from_values([emotion_dict[key] for key in self.keys])
+        hewo.left_eye.set_emotion(
+            [values[f"letl_{suffix}"] for suffix in "abc"], values["lps"],
+            [values[f"lebl_{suffix}"] for suffix in "abc"],
+        )
+        hewo.right_eye.set_emotion(
+            [values[f"retl_{suffix}"] for suffix in "abc"], values["rps"],
+            [values[f"rebl_{suffix}"] for suffix in "abc"],
+        )
+        hewo.mouth.set_emotion(
+            [values[f"tl_{suffix}"] for suffix in "abcde"],
+            [values[f"bl_{suffix}"] for suffix in "abcde"],
+        )
+
+    def _transition_values(self, current):
+        next_values = {
+            key: current[key] + max(-self.emotion_step, min(self.emotion_step, self._emotion_goal[key] - current[key]))
+            for key in self.keys
+        }
+        diffs = [self._emotion_goal[key] - next_values[key] for key in self.keys]
+        return next_values, diffs
 
     def transition(self, hewo):
-        start = self.get_emotion(hewo)
-        goal = self.emotion_goal
-        diffs = []
-        for key in start.keys():
-            diff = goal[key] - start[key]
-            if diff > 0:
-                start[key] += min(diff, self.emotion_step)
-            elif diff < 0:
-                start[key] += max(diff, -self.emotion_step)
-            diffs.append(goal[key] - start[key])
-        return start, diffs
+        return self._transition_values(self.get_emotion(hewo))
 
     def update_emotion(self, hewo):
-        new_emotion, _ = self.transition(hewo)
+        current = self.get_emotion(hewo)
+        if all(current[key] == self._emotion_goal[key] for key in self.keys):
+            return
+        new_emotion, _ = self._transition_values(current)
         self.set_emotion(hewo, new_emotion)
 
     def set_random_emotion(self):
-        random_emotion = [random.randint(0, 100) for _ in range(len(self.emotion_goal))]
-        self.emotion_goal = self.emotion_dict_from_values(random_emotion)
+        self.set_goal({key: random.randint(0, 100) for key in self.keys})
 
     def reset_emotion(self):
-        self.emotion_goal = self.emotion_dict_from_values(self.initial_emotion)
-        return self.initial_emotion
+        self._emotion_goal = dict(self.initial_emotion)
+        return self.emotion_goal

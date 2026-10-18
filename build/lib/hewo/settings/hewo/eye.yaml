@@ -1,0 +1,32 @@
+eye:
+  bg_color:
+    - 100
+    - 139
+    - 127
+  top_lash:
+    flip: false
+    color:
+      - 100
+      - 139
+      - 127
+    emotion:
+      - 0
+      - 0
+      - 0
+  pupil:
+    color:
+      - 231
+      - 210
+      - 146
+    emotion:
+      - 75
+  bot_lash:
+    flip: true
+    color:
+      - 100
+      - 139
+      - 127
+    emotion:
+      - 100
+      - 100
+      - 100
