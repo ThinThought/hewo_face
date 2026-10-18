@@ -1,5 +1,5 @@
 mouth:
-  talking_amplitude: 90
+  talking_amplitude: 50
   talking_speed: 10
   bg_color:
     - 100
