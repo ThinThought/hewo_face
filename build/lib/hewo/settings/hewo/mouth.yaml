@@ -1,0 +1,31 @@
+mouth:
+  talking_amplitude: 90
+  talking_speed: 10
+  bg_color:
+    - 100
+    - 139
+    - 127
+  upper_lip:
+    lip_width: 5
+    color:
+      - 231
+      - 210
+      - 146
+    emotion:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+  lower_lip:
+    lip_width: 5
+    color:
+      - 231
+      - 210
+      - 146
+    emotion:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0

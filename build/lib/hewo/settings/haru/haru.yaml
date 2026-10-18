@@ -1,0 +1,21 @@
+bg_color:
+  - 0
+  - 0
+  - 0
+object_name: HaruEyesLayout
+objects:
+  - filepath: /opt/ros/jazzy/share/idmind_tabletop/resources/video/default_tracking_eyes_2.mp4
+    position: [100, 50]
+    size: [200, 200]
+    loop: True
+    audio: false
+    object_name: video1
+    autoplay: true
+
+  - filepath: /opt/ros/jazzy/share/idmind_tabletop/resources/video/default_tracking_eyes_2.mp4
+    position: [500, 50]
+    size: [200, 200]
+    loop: True
+    audio: false
+    object_name: video2
+    autoplay: true
