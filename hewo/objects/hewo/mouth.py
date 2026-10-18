@@ -188,7 +188,15 @@ class Mouth:
         }
 
     def toggle_talk(self):
-        if not self.is_talking:
+        self.set_talking(not self.is_talking)
+
+    def set_talking(self, active):
+        """Start or stop the procedural lip animation from an external signal."""
+        active = bool(active)
+        if active == self.is_talking:
+            return
+
+        if active:
             self.set_talking_reference()
             self.talking_start_time = time.time()
             self.is_talking = True

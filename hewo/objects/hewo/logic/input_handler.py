@@ -74,7 +74,7 @@ class HeWoInputHandler:
         self.adjust_position(0, 0)
 
     def toggle_talk(self):
-        self.hewo.mouth.toggle_talk()
+        self.hewo.toggle_talk()
         if self.hewo.mouth.is_talking:
             self.hewo.logger.debug("Talking mode activated.")
         else:

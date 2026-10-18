@@ -3,13 +3,15 @@ from hewo.objects.hewo.face import Face
 from hewo.settings import create_logger
 from hewo.objects.hewo.logic.emotion_mapper import EmotionMapper
 from hewo.objects.hewo.logic.input_handler import HeWoInputHandler
+from hewo.objects.speech.events import SpeechEventKind
 
 
 class HeWo(Face):
-    def __init__(self, settings, object_name="HeWo"):
+    def __init__(self, settings, object_name="HeWo", speech_controller=None):
         super().__init__(settings=settings)
         self.logger = create_logger(object_name)
         self.settings = settings
+        self.speech_controller = speech_controller
 
         self.mapper = EmotionMapper()
         self.input_handler = HeWoInputHandler(self, self.mapper)
@@ -24,6 +26,7 @@ class HeWo(Face):
     def update(self, dt_ms=None):
         if self.input_handler.manual_mode:
             self.input_handler.handle_keypressed()
+        self._sync_speech_state()
         self.mapper.update_emotion(self)
         self.update_face()
 
@@ -33,6 +36,28 @@ class HeWo(Face):
 
     def toggle_talk(self):
         self.mouth.toggle_talk()
+
+    def say(self, text):
+        """Queue speech when a controller is configured by the composition root."""
+        if self.speech_controller is None:
+            raise RuntimeError("No speech controller is configured")
+        self.speech_controller.speak(text)
+
+    def _sync_speech_state(self):
+        if self.speech_controller is None:
+            return
+        for event in self.speech_controller.drain_events():
+            if event.kind is SpeechEventKind.STARTED:
+                self.mouth.set_talking(True)
+            elif event.kind in (SpeechEventKind.FINISHED, SpeechEventKind.FAILED):
+                if event.kind is SpeechEventKind.FAILED:
+                    self.logger.warning("Speech synthesis/playback failed: %s", event.error)
+                self.mouth.set_talking(False)
+
+    def close(self):
+        if self.speech_controller is not None:
+            self.speech_controller.close()
+            self.mouth.set_talking(False)
 
     def trigger_blink(self):
         self.left_eye.trigger_blink()

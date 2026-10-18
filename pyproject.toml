@@ -37,6 +37,11 @@ dependencies = [
 hewo_face_main = "hewo.main.main:main"
 haru_eyes = "hewo.main.haru_layout:main"
 
+[project.optional-dependencies]
+speech = [
+    "pocket-tts>=3.3,<4",
+]
+
 [tool.setuptools.packages.find]
 include = ["hewo", "hewo.*"]
 

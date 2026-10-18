@@ -69,6 +69,8 @@ If launched with the REST endpoint enabled, the following routes are available:
 | `/hewo/adjust_position`        | POST   | Moves the face by (dx, dy)           |
 | `/hewo/set_size`               | POST   | Sets global face size                |
 | `/hewo/toggle_talk`            | POST   | Starts or stops talking animation    |
+| `/hewo/say`                    | POST   | Queues speech synthesis and playback |
+| `/hewo/speech_options`         | GET    | Lists available speech engine voices |
 | `/hewo/trigger_blink`          | POST   | Triggers a blink                     |
 | `/hewo/set_random_emotion`     | POST   | Randomizes all emotion values        |
 | `/hewo/reset_emotion`          | POST   | Resets all emotion values to neutral |
@@ -124,6 +126,33 @@ curl -X POST "$BASE_URL/hewo/set_size" \
 ```bash
 curl -X POST "$BASE_URL/hewo/toggle_talk"
 ```
+
+Queue text to be synthesized and played by HeWo. The first request initializes
+the chosen engine; requests that change engine settings reinitialize it. The
+mouth animation follows audio playback. Pocket TTS requires the optional
+dependency (`uv sync --extra speech`); eSpeak NG requires its system executable.
+
+```bash
+curl -X POST "$BASE_URL/hewo/say" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Hola, soy HeWo","backend":"pocket_tts","language":"spanish","voice":"lola","quantize":false,"sampler_decode_steps":1}'
+```
+
+`text` is required. `backend` defaults to `pocket_tts` and accepts
+`pocket_tts` or `espeak_ng`. Pocket TTS options are `language` (default
+`spanish`), `voice` (default selected by the engine), `quantize` (default
+`false`), and `sampler_decode_steps` (default `1`). For eSpeak NG, `voice`
+accepts a voice code such as `es`; `language`, `quantize`, and
+`sampler_decode_steps` are ignored. A successful request returns HTTP 202 with
+`{"status":"success","message":"Speech queued"}`. Synthesis or playback
+failures are logged by the face engine.
+
+The test UI can discover installed choices with
+`GET /hewo/speech_options?backend=pocket_tts` or
+`GET /hewo/speech_options?backend=espeak_ng`. Pocket TTS returns its built-in
+voices as one list (and also includes their language groups for reference);
+the selected voice is independent from the selected language. eSpeak NG returns
+installed voice codes.
 
 ```bash
 curl -X POST "$BASE_URL/hewo/trigger_blink"

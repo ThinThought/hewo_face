@@ -19,6 +19,14 @@ hewo/objects/hewo/logic/emotion_mapper.py
 hewo/objects/hewo/logic/input_handler.py
 hewo/objects/multimedia/__init__.py
 hewo/objects/multimedia/multimedia.py
+hewo/objects/speech/__init__.py
+hewo/objects/speech/controller.py
+hewo/objects/speech/engine.py
+hewo/objects/speech/events.py
+hewo/objects/speech/output.py
+hewo/objects/speech/backends/__init__.py
+hewo/objects/speech/backends/espeak_ng.py
+hewo/objects/speech/backends/pocket_tts.py
 hewo/settings/__init__.py
 hewo/settings/hewo/__init__.py
 hewo/settings/hewo/eye.yaml

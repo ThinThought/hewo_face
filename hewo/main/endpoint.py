@@ -1,4 +1,5 @@
 import threading
+import subprocess
 from flask import Flask, request, jsonify
 
 SERVER_IP = '0.0.0.0'
@@ -9,7 +10,53 @@ class ServerEndPoint:
     def __init__(self, main_window):
         self.app = Flask(__name__)
         self.main_window = main_window
+        self._speech_lock = threading.Lock()
+        self._speech_signature = None
         self.setup_routes()
+
+    def _speech_controller(self, config):
+        """Configure and reuse a speech controller for the active HeWo layout."""
+        layout = self.get_layout()
+        if layout is None or not callable(getattr(layout, "say", None)):
+            raise RuntimeError("The active layout does not support speech")
+
+        backend = config.get("backend", "pocket_tts")
+        if backend not in ("pocket_tts", "espeak_ng"):
+            raise ValueError("backend must be 'pocket_tts' or 'espeak_ng'")
+        language = config.get("language", "spanish")
+        voice = config.get("voice")
+        quantize = config.get("quantize", False)
+        sampler_decode_steps = config.get("sampler_decode_steps", 1)
+        if not isinstance(language, str) or not language.strip():
+            raise ValueError("language must be a non-empty string")
+        if voice is not None and (not isinstance(voice, str) or not voice.strip()):
+            raise ValueError("voice must be a non-empty string or null")
+        if not isinstance(quantize, bool):
+            raise ValueError("quantize must be a boolean")
+        if isinstance(sampler_decode_steps, bool) or not isinstance(sampler_decode_steps, int) or sampler_decode_steps < 1:
+            raise ValueError("sampler_decode_steps must be a positive integer")
+        signature = (backend, language.strip(), voice.strip() if voice else None,
+                     quantize, sampler_decode_steps)
+
+        with self._speech_lock:
+            if getattr(layout, "speech_controller", None) is None or self._speech_signature != signature:
+                old_controller = getattr(layout, "speech_controller", None)
+                if old_controller is not None:
+                    old_controller.close()
+                if backend == "pocket_tts":
+                    from hewo.objects.speech.backends.pocket_tts import PocketTTSEngine
+                    engine = PocketTTSEngine(
+                        language=signature[1], voice=signature[2], quantize=quantize,
+                        sampler_decode_steps=sampler_decode_steps,
+                    )
+                else:
+                    from hewo.objects.speech.backends.espeak_ng import EspeakNgEngine
+                    engine = EspeakNgEngine(voice=signature[2] or signature[1])
+                from hewo.objects.speech.controller import SpeechController
+                from hewo.objects.speech.output import PygameAudioOutput
+                layout.speech_controller = SpeechController(engine, PygameAudioOutput())
+                self._speech_signature = signature
+        return layout
 
     def get_layout(self):
         return self.main_window.get_active_layout()
@@ -20,9 +67,72 @@ class ServerEndPoint:
             return None, (jsonify({"status": "error", "message": f"No active layout supports '{method}'"}), 400)
         return layout, None
 
+    @staticmethod
+    def _speech_options(backend):
+        pocket_voices = {
+            "english": ["cosette", "marius", "javert", "alba", "jean", "anna", "vera", "fantine", "charles", "paul", "eponine", "azelma", "george", "mary", "jane", "michael", "eve", "bill_boerst", "peter_yearsley", "stuart_bell", "caro_davy"],
+            "spanish": ["lola"], "french": ["estelle"], "german": ["juergen"],
+            "italian": ["giovanni"], "portuguese": ["rafael"], "dutch": ["daan"],
+        }
+        if backend == "pocket_tts":
+            all_voices = [
+                "cosette", "marius", "javert", "alba", "jean", "anna", "vera",
+                "fantine", "charles", "paul", "eponine", "azelma", "george", "mary",
+                "jane", "michael", "eve", "bill_boerst", "peter_yearsley", "stuart_bell",
+                "caro_davy", "giovanni", "lola", "juergen", "rafael", "daan", "estelle",
+            ]
+            return {"languages": list(pocket_voices), "voices": all_voices, "voices_by_language": pocket_voices}
+        if backend == "espeak_ng":
+            try:
+                output = subprocess.run(
+                    ["espeak-ng", "--voices"], check=True, capture_output=True,
+                    text=True, timeout=5,
+                ).stdout
+            except (OSError, subprocess.SubprocessError) as error:
+                raise RuntimeError(f"Could not list eSpeak NG voices: {error}") from error
+            voices = []
+            for line in output.splitlines():
+                columns = line.split()
+                if len(columns) >= 5 and columns[0].isdigit():
+                    voice = columns[4]
+                    if voice not in voices:
+                        voices.append(voice)
+            if not voices:
+                raise RuntimeError("eSpeak NG returned no installed voices")
+            return {"languages": [], "voices": {"": voices}}
+        raise ValueError("backend must be 'pocket_tts' or 'espeak_ng'")
+
 
 
     def setup_routes(self):
+        @self.app.route('/hewo/speech_options', methods=['GET'])
+        def speech_options():
+            backend = request.args.get("backend", "pocket_tts")
+            try:
+                options = self._speech_options(backend)
+                return jsonify({"status": "success", **options}), 200
+            except ValueError as error:
+                return jsonify({"status": "error", "message": str(error)}), 400
+            except RuntimeError as error:
+                return jsonify({"status": "error", "message": str(error)}), 503
+
+        @self.app.route('/hewo/say', methods=['POST'])
+        def say_text():
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return jsonify({"status": "error", "message": "Request body must be a JSON object"}), 400
+            text = data.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return jsonify({"status": "error", "message": "text must be a non-empty string"}), 400
+            try:
+                layout = self._speech_controller(data)
+                layout.say(text)
+                return jsonify({"status": "success", "message": "Speech queued"}), 202
+            except (TypeError, ValueError, RuntimeError) as error:
+                return jsonify({"status": "error", "message": str(error)}), 400
+            except Exception as error:
+                return jsonify({"status": "error", "message": str(error)}), 500
+
         @self.app.route('/set_layout', methods=['POST'])
         def set_layout():
             data = request.get_json()

@@ -24,6 +24,8 @@ Requires-Dist: screeninfo>=0.8.1
 Requires-Dist: urllib3>=2.2.3
 Requires-Dist: Werkzeug>=3.1.3
 Requires-Dist: opencv-python>=4.11.0.86
+Provides-Extra: speech
+Requires-Dist: pocket-tts<4,>=3.3; extra == "speech"
 Dynamic: license-file
 
 # HeWo's Face 
