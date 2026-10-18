@@ -2,9 +2,8 @@ import copy
 import math
 import time
 import pygame
-import numpy as np
-from scipy.interpolate import make_interp_spline
 from hewo.settings import create_logger
+from hewo.objects.hewo.curves import quadratic_basis, sample_quadratic
 
 
 class Lip:
@@ -24,6 +23,9 @@ class Lip:
         # caché de spline
         self._cache_key = None
         self._cached_points = None
+        self._curve_basis_key = None
+        self._curve_x = None
+        self._curve_weights = None
 
     # --------------------------------------------------------------------- utils
     @staticmethod
@@ -78,9 +80,11 @@ class Lip:
 
         x_points = self.fix_x_points(x_points)
 
-        spline = make_interp_spline(x_points, y_points, k=2)
-        x_range = np.linspace(min(x_points), max(x_points), 50)
-        points = [(int(x), int(spline(x))) for x in x_range]
+        x_key = tuple(x_points)
+        if x_key != self._curve_basis_key:
+            self._curve_x, self._curve_weights = quadratic_basis(x_points, 50)
+            self._curve_basis_key = x_key
+        points = sample_quadratic(self._curve_x, self._curve_weights, y_points)
 
         # guarda en caché
         self._cache_key = key
@@ -100,6 +104,7 @@ class Lip:
         if size != self.size:
             self.size = size
             self._cache_key = None
+            self._curve_basis_key = None
 
     def update(self):
         pass

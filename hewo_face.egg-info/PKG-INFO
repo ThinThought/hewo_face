@@ -20,7 +20,6 @@ Requires-Dist: numpy>=2.1.1
 Requires-Dist: pygame>=2.6.0
 Requires-Dist: PyYAML>=6.0.2
 Requires-Dist: requests>=2.32.3
-Requires-Dist: scipy>=1.14.1
 Requires-Dist: screeninfo>=0.8.1
 Requires-Dist: urllib3>=2.2.3
 Requires-Dist: Werkzeug>=3.1.3

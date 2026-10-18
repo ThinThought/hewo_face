@@ -4,7 +4,6 @@ import pygame
 import screeninfo
 from typing import Any
 
-from hewo.objects.multimedia import MultimediaLayout, MultimediaGameObj, Multimedia
 from hewo.main.endpoint import ServerEndPoint
 
 logging.basicConfig(level=logging.DEBUG, format="[%(levelname)s] - %(name)s: %(message)s")
@@ -58,12 +57,11 @@ class MainWindow:
 
     # ---------------------------------------------------------------- cleanup helpers
     def _shutdown_media(self):
-        """Stop audio/video (ffplay or mixer) for every Multimedia object in every layout."""
+        """Let each layout release resources it owns."""
         for layout in self.layout_dict.values():
-            if isinstance(layout, MultimediaLayout):
-                for obj in layout.objects:
-                    if isinstance(obj, Multimedia):
-                        obj.stop()
+            close = getattr(layout, "close", None)
+            if callable(close):
+                close()
 
     # ---------------------------------------------------------------- helpers
     def get_active_layout(self):
@@ -97,14 +95,12 @@ class MainWindow:
         layout = self.get_active_layout()
         if not layout:
             return
-        try:
-            layout.update(dt_ms)
-        except TypeError:
-            layout.update()
+        layout.update(dt_ms)
 
     def draw(self):
-        self.screen.fill(self.background_color)
         layout = self.get_active_layout()
+        if layout is None or not getattr(layout, "clears_surface", False):
+            self.screen.fill(self.background_color)
         if layout:
             layout.draw(self.screen)
         pygame.display.flip()

@@ -1,8 +1,7 @@
 import pygame
 import copy
-import numpy as np
-from scipy.interpolate import make_interp_spline
 from hewo.settings import create_logger
+from hewo.objects.hewo.curves import quadratic_basis, sample_quadratic
 
 
 class EyeLash:
@@ -27,6 +26,7 @@ class EyeLash:
         ]
 
         self.flip = self.settings["flip"]
+        self._geometry_dirty = True
         self.set_emotion(self.settings["emotion"])
 
         # ---------------------------------------------------------------------
@@ -34,6 +34,9 @@ class EyeLash:
         # ---------------------------------------------------------------------
         self._cache_key = None          # (size, position, emotion tuple, flip)
         self._cached_polygon = None
+        self._curve_basis_key = None
+        self._curve_x = None
+        self._curve_weights = None
 
     # -------------------------------------------------------------------------
     # Eventos / lógica
@@ -42,7 +45,8 @@ class EyeLash:
         pass
 
     def update(self):
-        self.update_polygon_points()
+        if self._geometry_dirty:
+            self.update_polygon_points()
 
     def update_polygon_points(self):
         x, y = self.position
@@ -64,11 +68,14 @@ class EyeLash:
             self.polygon_points[idx][1] = self.position[1] + self.size[1] * (
                 val / 100
             )
+        self._geometry_dirty = False
 
     # -------------------------------------------------------------------------
     # Dibujo con spline cacheada
     # -------------------------------------------------------------------------
     def create_polygon(self):
+        if self._geometry_dirty:
+            self.update_polygon_points()
         # Generamos una clave única para la configuración actual
         key = (
             tuple(self.size),
@@ -87,12 +94,13 @@ class EyeLash:
                 self.polygon_points[4],
             ]
 
-        # Spline cuadrática
-        x_points = np.array([p[0] for p in points])
-        y_points = np.array([p[1] for p in points])
-        spline = make_interp_spline(x_points, y_points, k=2)
-        x_range = np.linspace(min(x_points), max(x_points), 500)
-        interpolated_points = [(int(x), int(spline(x))) for x in x_range]
+        x_points = tuple(p[0] for p in points)
+        if x_points != self._curve_basis_key:
+            self._curve_x, self._curve_weights = quadratic_basis(x_points, 96)
+            self._curve_basis_key = x_points
+        interpolated_points = sample_quadratic(
+            self._curve_x, self._curve_weights, [p[1] for p in points]
+        )
 
         polygon = [self.polygon_points[0]] + interpolated_points + self.polygon_points[4:]
         if self.flip:
@@ -116,11 +124,15 @@ class EyeLash:
             self.size = size
             self.max_emotion = self.size[1]
             self._cache_key = None  # invalida caché
+            self._curve_basis_key = None
+            self._geometry_dirty = True
 
     def set_position(self, position):
         if position != getattr(self, "position", None):
             self.position = position
             self._cache_key = None  # invalida caché
+            self._curve_basis_key = None
+            self._geometry_dirty = True
 
     def get_emotion(self):
         return self.emotion
@@ -134,6 +146,7 @@ class EyeLash:
                 changed = True
         if changed:
             self._cache_key = None  # invalida caché
+            self._geometry_dirty = True
 
 
 class Pupil:
