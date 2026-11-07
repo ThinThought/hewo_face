@@ -1,7 +1,6 @@
 import pygame
-import random
 from hewo.objects.hewo.face import Face
-from hewo.settings import SettingsLoader, create_logger
+from hewo.settings import create_logger
 from hewo.objects.hewo.logic.emotion_mapper import EmotionMapper
 from hewo.objects.hewo.logic.input_handler import HeWoInputHandler
 
@@ -17,21 +16,24 @@ class HeWo(Face):
 
     def set_emotion_goal(self, emotion_goal):
         self.logger.debug(f"Setting emotion goal: {emotion_goal}")
-        self.mapper.emotion_goal = emotion_goal
-        self.update_face()
+        return self.mapper.set_goal(emotion_goal)
 
     def get_emotion(self):
         return self.mapper.get_emotion(self)
 
-    def update(self):
+    def update(self, dt_ms=None):
+        self.input_handler.update(dt_ms)
         if self.input_handler.manual_mode:
             self.input_handler.handle_keypressed()
         self.mapper.update_emotion(self)
+        self.update_pose_goals(dt_ms)
         self.update_face()
 
     def handle_event(self, event):
-        if self.input_handler.manual_mode:
-            self.input_handler.handle_event(event)
+        self.input_handler.handle_event(event)
+
+    def close(self):
+        self.input_handler.close()
 
     def toggle_talk(self):
         self.mouth.toggle_talk()
@@ -41,10 +43,9 @@ class HeWo(Face):
         self.right_eye.trigger_blink()
 
     def adjust_position(self, dx, dy):
-        pos = self.position
-        pos[0] += dx
-        pos[1] += dy
-        self.set_position(pos)
+        with self._pose_lock:
+            self.set_position((self.position[0] + dx, self.position[1] + dy))
+            self.cancel_position_goal(("x", "y"))
 
     def set_face_size(self, new_size):
         self.set_size(new_size)
@@ -58,15 +59,15 @@ class HeWo(Face):
 
     def adjust_emotion(self, param, value):
         """Set emotion parameter `param` to a specific `value` (0-100 clamped)."""
-        clamped_value = max(0, min(100, value))
-        self.mapper.emotion_goal[param] = clamped_value
+        clamped_value = self.mapper.set_goal({param: value})[param]
         self.logger.debug(f"Set {param} to {clamped_value}")
 
 
 # Código de prueba
 def test_component():
     pygame.init()
-    settings = SettingsLoader().load_settings("game.settings.hewo")
+    from hewo.settings import SettingsLoader
+    settings = SettingsLoader().load_settings("hewo.settings.hewo")
     hewo = HeWo(settings=settings)
 
     screen = pygame.display.set_mode((800, 600))

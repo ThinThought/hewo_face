@@ -95,6 +95,9 @@ If launched with the REST endpoint enabled, the following routes are available:
 | `/hewo/adjust_emotion/<param>` | POST   | Sets value of a single face point    |
 | `/hewo/get_emotion`            | GET    | Retrieves current face values        |
 | `/hewo/adjust_position`        | POST   | Moves the face by (dx, dy)           |
+| `/hewo/set_position_goal`      | POST   | Moves the face toward an XYZ goal    |
+| `/hewo/set_surface_goal`       | POST   | Moves/rotates the face on the sphere |
+| `/hewo/get_pose`               | GET    | Retrieves current and target pose    |
 | `/hewo/set_size`               | POST   | Sets global face size                |
 | `/hewo/toggle_talk`            | POST   | Starts or stops talking animation    |
 | `/hewo/trigger_blink`          | POST   | Triggers a blink                     |
@@ -141,6 +144,36 @@ curl -X GET "$BASE_URL/hewo/get_emotion"
 curl -X POST "$BASE_URL/hewo/adjust_position" \
   -H "Content-Type: application/json" \
   -d '{"dx": 15, "dy": -10}'
+```
+
+### Pose API (XYZ + spherical DOFs)
+
+`POST /hewo/set_position_goal` accepts any combination of `x`, `y`, and `z`.
+X/Y are screen render units, and Z is the projected camera distance. `speed`
+is measured in render units per second. Set `speed` to `0` or `immediate` to
+`true` to apply the goal immediately.
+
+```bash
+curl -X POST "$BASE_URL/hewo/set_position_goal" \
+  -H "Content-Type: application/json" \
+  -d '{"x": 320, "y": 180, "z": 760, "speed": 300}'
+```
+
+`POST /hewo/set_surface_goal` accepts any combination of `longitude`,
+`latitude`, and `roll`, all in radians. Its `speed` is radians per second; use
+`0` or `immediate: true` for an immediate change. Latitude is limited to
+`[-pi/2, pi/2]` and the angular values wrap around at `pi`.
+
+`GET /hewo/get_pose` returns both the current pose and its active goals.
+
+```bash
+curl -X POST "$BASE_URL/hewo/set_surface_goal" \
+  -H "Content-Type: application/json" \
+  -d '{"longitude": 0.5, "latitude": -0.2, "roll": 0.1, "speed": 1.2}'
+```
+
+```bash
+curl -X GET "$BASE_URL/hewo/get_pose"
 ```
 
 ```bash

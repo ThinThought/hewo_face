@@ -22,14 +22,18 @@ class HeWo(Face):
         return self.mapper.get_emotion(self)
 
     def update(self, dt_ms=None):
+        self.input_handler.update(dt_ms)
         if self.input_handler.manual_mode:
             self.input_handler.handle_keypressed()
         self.mapper.update_emotion(self)
+        self.update_pose_goals(dt_ms)
         self.update_face()
 
     def handle_event(self, event):
-        if self.input_handler.manual_mode:
-            self.input_handler.handle_event(event)
+        self.input_handler.handle_event(event)
+
+    def close(self):
+        self.input_handler.close()
 
     def toggle_talk(self):
         self.mouth.toggle_talk()
@@ -39,10 +43,9 @@ class HeWo(Face):
         self.right_eye.trigger_blink()
 
     def adjust_position(self, dx, dy):
-        pos = self.position
-        pos[0] += dx
-        pos[1] += dy
-        self.set_position(pos)
+        with self._pose_lock:
+            self.set_position((self.position[0] + dx, self.position[1] + dy))
+            self.cancel_position_goal(("x", "y"))
 
     def set_face_size(self, new_size):
         self.set_size(new_size)

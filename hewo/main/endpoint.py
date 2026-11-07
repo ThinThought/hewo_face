@@ -56,6 +56,68 @@ class ServerEndPoint:
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 400
 
+        @self.app.route('/hewo/set_position_goal', methods=['POST'])
+        def set_position_goal():
+            layout, error = self.require_layout_method('set_position_goal')
+            if error:
+                return error
+            data = request.get_json(silent=True)
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                allowed = {"x", "y", "z", "speed", "immediate"}
+                unknown = set(data) - allowed
+                if unknown:
+                    raise ValueError(f"Unknown position field(s): {', '.join(sorted(unknown))}")
+                immediate = data.get("immediate", False)
+                if not isinstance(immediate, bool):
+                    raise ValueError("'immediate' must be boolean")
+                speed = 0 if immediate else data.get("speed")
+                if speed is None:
+                    raise ValueError("'speed' is required; use 0 for an immediate change")
+                goal = layout.set_position_goal(
+                    x=data.get("x"), y=data.get("y"), z=data.get("z"), speed=speed
+                )
+                return jsonify({"status": "success", "position_goal": goal}), 200
+            except (TypeError, ValueError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @self.app.route('/hewo/set_surface_goal', methods=['POST'])
+        def set_surface_goal():
+            layout, error = self.require_layout_method('set_surface_goal')
+            if error:
+                return error
+            data = request.get_json(silent=True)
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                allowed = {"longitude", "latitude", "roll", "speed", "immediate"}
+                unknown = set(data) - allowed
+                if unknown:
+                    raise ValueError(f"Unknown surface field(s): {', '.join(sorted(unknown))}")
+                immediate = data.get("immediate", False)
+                if not isinstance(immediate, bool):
+                    raise ValueError("'immediate' must be boolean")
+                speed = 0 if immediate else data.get("speed")
+                if speed is None:
+                    raise ValueError("'speed' is required; use 0 for an immediate change")
+                goal = layout.set_surface_goal(
+                    longitude=data.get("longitude"),
+                    latitude=data.get("latitude"),
+                    roll=data.get("roll"),
+                    speed=speed,
+                )
+                return jsonify({"status": "success", "surface_goal": goal}), 200
+            except (TypeError, ValueError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @self.app.route('/hewo/get_pose', methods=['GET'])
+        def get_pose():
+            layout, error = self.require_layout_method('get_pose')
+            if error:
+                return error
+            return jsonify({"status": "success", "pose": layout.get_pose()}), 200
+
         @self.app.route('/hewo/toggle_talk', methods=['POST'])
         def toggle_talk():
             layout, error = self.require_layout_method('toggle_talk')
