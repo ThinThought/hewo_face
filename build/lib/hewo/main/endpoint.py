@@ -12,9 +12,13 @@ class ServerEndPoint:
         self.setup_routes()
 
     def get_layout(self):
-        if self.main_window.active_layout is not None:
-            return self.main_window.layout_dict[self.main_window.active_layout]
-        return None
+        return self.main_window.get_active_layout()
+
+    def require_layout_method(self, method):
+        layout = self.get_layout()
+        if layout is None or not callable(getattr(layout, method, None)):
+            return None, (jsonify({"status": "error", "message": f"No active layout supports '{method}'"}), 400)
+        return layout, None
 
 
 
@@ -26,7 +30,7 @@ class ServerEndPoint:
             if name not in self.main_window.layout_dict:
                 return jsonify({"status": "error", "message": f"Layout '{name}' not found"}), 404
 
-            self.main_window.active_layout = name
+            self.main_window.set_active_layout(name)
             return jsonify({"status": "success", "active_layout": name}), 200
 
         @self.app.route('/hewo/set_emotion_goal', methods=['POST'])
@@ -52,21 +56,89 @@ class ServerEndPoint:
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 400
 
+        @self.app.route('/hewo/set_position_goal', methods=['POST'])
+        def set_position_goal():
+            layout, error = self.require_layout_method('set_position_goal')
+            if error:
+                return error
+            data = request.get_json(silent=True)
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                allowed = {"x", "y", "z", "speed", "immediate"}
+                unknown = set(data) - allowed
+                if unknown:
+                    raise ValueError(f"Unknown position field(s): {', '.join(sorted(unknown))}")
+                immediate = data.get("immediate", False)
+                if not isinstance(immediate, bool):
+                    raise ValueError("'immediate' must be boolean")
+                speed = 0 if immediate else data.get("speed")
+                if speed is None:
+                    raise ValueError("'speed' is required; use 0 for an immediate change")
+                goal = layout.set_position_goal(
+                    x=data.get("x"), y=data.get("y"), z=data.get("z"), speed=speed
+                )
+                return jsonify({"status": "success", "position_goal": goal}), 200
+            except (TypeError, ValueError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @self.app.route('/hewo/set_surface_goal', methods=['POST'])
+        def set_surface_goal():
+            layout, error = self.require_layout_method('set_surface_goal')
+            if error:
+                return error
+            data = request.get_json(silent=True)
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                allowed = {"longitude", "latitude", "roll", "speed", "immediate"}
+                unknown = set(data) - allowed
+                if unknown:
+                    raise ValueError(f"Unknown surface field(s): {', '.join(sorted(unknown))}")
+                immediate = data.get("immediate", False)
+                if not isinstance(immediate, bool):
+                    raise ValueError("'immediate' must be boolean")
+                speed = 0 if immediate else data.get("speed")
+                if speed is None:
+                    raise ValueError("'speed' is required; use 0 for an immediate change")
+                goal = layout.set_surface_goal(
+                    longitude=data.get("longitude"),
+                    latitude=data.get("latitude"),
+                    roll=data.get("roll"),
+                    speed=speed,
+                )
+                return jsonify({"status": "success", "surface_goal": goal}), 200
+            except (TypeError, ValueError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @self.app.route('/hewo/get_pose', methods=['GET'])
+        def get_pose():
+            layout, error = self.require_layout_method('get_pose')
+            if error:
+                return error
+            return jsonify({"status": "success", "pose": layout.get_pose()}), 200
+
         @self.app.route('/hewo/toggle_talk', methods=['POST'])
         def toggle_talk():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('toggle_talk')
+            if error:
+                return error
             layout.toggle_talk()
             return jsonify({"status": "success"}), 200
 
         @self.app.route('/hewo/trigger_blink', methods=['POST'])
         def trigger_blink():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('trigger_blink')
+            if error:
+                return error
             layout.trigger_blink()
             return jsonify({"status": "success"}), 200
 
         @self.app.route('/hewo/adjust_position', methods=['POST'])
         def adjust_position():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('adjust_position')
+            if error:
+                return error
             data = request.get_json()
             dx = int(data.get("dx", 0))
             dy = int(data.get("dy", 0))
@@ -75,7 +147,9 @@ class ServerEndPoint:
 
         @self.app.route('/hewo/set_size', methods=['POST'])
         def adjust_size():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('set_face_size')
+            if error:
+                return error
             data = request.get_json()
             size = int(data.get("value", 0))
             layout.set_face_size(size)
@@ -83,31 +157,44 @@ class ServerEndPoint:
 
         @self.app.route('/hewo/set_random_emotion', methods=['POST'])
         def set_random_emotion():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('set_random_emotion')
+            if error:
+                return error
             layout.set_random_emotion()
             return jsonify({"status": "success"}), 200
 
         @self.app.route('/hewo/reset_emotion', methods=['POST'])
         def reset_emotion():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('reset_emotion')
+            if error:
+                return error
             layout.reset_emotion()
             return jsonify({"status": "success"}), 200
 
         @self.app.route('/hewo/adjust_emotion/<param>', methods=['POST'])
         def adjust_emotion(param):
             layout = self.get_layout()
+            if not layout or not hasattr(layout, 'adjust_emotion'):
+                return jsonify({"status": "error", "message": "No valid layout for adjusting emotion"}), 400
             data = request.get_json()
             try:
+                if not isinstance(data, dict):
+                    raise ValueError
                 value = int(data.get("value"))
             except (TypeError, ValueError):
                 return jsonify({"status": "error", "message": "Missing or invalid 'value' (must be int)"}), 400
 
-            layout.adjust_emotion(param, value)
-            return jsonify({"status": "success"}), 200
+            try:
+                layout.adjust_emotion(param, value)
+                return jsonify({"status": "success"}), 200
+            except (TypeError, ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
 
         @self.app.route('/media/move', methods=['POST'])
         def move_media():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('move_object')
+            if error:
+                return error
             data = request.get_json()
             name = data.get("name")
             dx = int(data.get("dx", 0))
@@ -117,7 +204,9 @@ class ServerEndPoint:
 
         @self.app.route('/media/set_position', methods=['POST'])
         def set_position():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('set_position')
+            if error:
+                return error
             data = request.get_json()
             name = data.get("name")
             x = int(data.get("x", 0))
@@ -127,7 +216,9 @@ class ServerEndPoint:
 
         @self.app.route('/media/pause', methods=['POST'])
         def pause_media():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('pause_object')
+            if error:
+                return error
             data = request.get_json()
             name = data.get("name")
             layout.pause_object(name)
@@ -135,7 +226,9 @@ class ServerEndPoint:
 
         @self.app.route('/media/play', methods=['POST'])
         def play_media():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('play_object')
+            if error:
+                return error
             data = request.get_json()
             name = data.get("name")
             layout.play_object(name)
@@ -143,7 +236,9 @@ class ServerEndPoint:
 
         @self.app.route('/media/remove', methods=['POST'])
         def remove_media():
-            layout = self.get_layout()
+            layout, error = self.require_layout_method('remove_by_name')
+            if error:
+                return error
             data = request.get_json()
             name = data.get("name")
             layout.remove_by_name(name)
