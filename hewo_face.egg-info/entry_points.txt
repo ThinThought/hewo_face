@@ -1,3 +1,0 @@
-[console_scripts]
-haru_eyes = hewo.main.haru_layout:main
-hewo_face_main = hewo.main.main:main

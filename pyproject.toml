@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hewo-face"
-version = "1.0.1"
+version = "1.1.0"
 description = "A Pygame project for modular game elements with reusable objects."
 authors = [
   { name = "Diego Delgado Chaves", email = "diedelcha@gmail.com" }
