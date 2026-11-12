@@ -14,9 +14,9 @@ class HeWo(Face):
         self.mapper = EmotionMapper()
         self.input_handler = HeWoInputHandler(self, self.mapper)
 
-    def set_emotion_goal(self, emotion_goal):
-        self.logger.debug(f"Setting emotion goal: {emotion_goal}")
-        return self.mapper.set_goal(emotion_goal)
+    def set_emotion_goal(self, emotion_goal, immediate=False):
+        self.logger.debug(f"Setting emotion goal: {emotion_goal} (immediate={immediate})")
+        return self.mapper.set_goal(emotion_goal, immediate=immediate)
 
     def get_emotion(self):
         return self.mapper.get_emotion(self)

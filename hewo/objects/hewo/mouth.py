@@ -3,11 +3,16 @@ import math
 import time
 import pygame
 from hewo.settings import create_logger
-from hewo.objects.hewo.curves import quadratic_basis, sample_quadratic
+from hewo.objects.hewo.curves import through_point_bezier
 
 
 class Lip:
-    """Un labio (superior o inferior) con spline cacheado."""
+    """Un labio (superior o inferior) con curva cacheada.
+
+    Los puntos de emoción (0‒100) quedan confinados al contenedor de la boca,
+    pero el trazo se dibuja con un margen (``offset``) para que la curva y su
+    grosor puedan salir del contenedor sin recortarse.
+    """
 
     def __init__(self, size, position, settings, object_name="Lip"):
         self.logger = create_logger(object_name)
@@ -20,73 +25,50 @@ class Lip:
             "emotion"
         ]  # [x1, y1, center_y, x2, y2] porcentajes 0‒100
 
-        # caché de spline
+        # caché de la curva
         self._cache_key = None
         self._cached_points = None
-        self._curve_basis_key = None
-        self._curve_x = None
-        self._curve_weights = None
 
     # --------------------------------------------------------------------- utils
     @staticmethod
     def clamp(value, min_value, max_value):
         return max(min_value, min(value, max_value))
 
-    @staticmethod
-    def fix_x_points(x_points):
-        # Evita puntos duplicados para la spline
-        if int(x_points[0]) == int(x_points[1]):
-            x_points[0] -= 1
-        if int(x_points[1]) == int(x_points[2]):
-            x_points[2] += 1
-        return x_points
+    # --------------------------------------------------------------------- curva
+    def control_points(self):
+        """Comisura izquierda, centro y comisura derecha en píxeles del contenedor.
 
-    # --------------------------------------------------------------------- spline
-    def lip_shape(self):
-        """Devuelve la lista de puntos (int, int) que definen la curva del labio.
-        Si tamaño + emoción no cambian, reutiliza la forma cacheada."""
-        key = (tuple(self.size), tuple(self.emotion))
+        En Y, 0..100 recorre el contenedor dejando medio grosor de labio en
+        cada borde, de modo que un punto en el extremo se ve entero (la boca
+        está pegada al borde inferior de la cara). La curva sí puede salir.
+        """
+        width, height = self.size
+        half = width / 2
+        inset = min(self.lip_width / 2, height / 2)
+        span = height - 2 * inset
+        e = [self.clamp(value, 0, 100) / 100 for value in self.emotion]
+        left = (e[0] * half, inset + e[1] * span)
+        center = (half, inset + e[2] * span)
+        right = (width - e[3] * half, inset + e[4] * span)
+        return left, center, right
+
+    def lip_shape(self, offset=(0, 0)):
+        """Puntos (int, int) del labio, desplazados por ``offset``.
+
+        Es una Bézier cuadrática que pasa por la altura del centro: acotada
+        aunque las comisuras se junten en el centro. Si tamaño + emoción no
+        cambian, reutiliza la forma cacheada.
+        """
+        key = (tuple(self.size), tuple(self.emotion), tuple(offset))
         if key == self._cache_key and self._cached_points is not None:
             return self._cached_points
 
-        x_points = [
-            self.clamp(
-                self.emotion[0] / 100 * (self.size[0] / 2), 0, self.size[0] / 2
-            ),
-            self.size[0] / 2,  # centro X fijo
-            self.clamp(
-                self.size[0] - (self.emotion[3] / 100 * (self.size[0] / 2)),
-                self.size[0] / 2,
-                self.size[0],
-            ),
-        ]
-        y_points = [
-            self.clamp(
-                self.emotion[1] / 100 * self.size[1],
-                self.lip_width,
-                self.size[1] - self.lip_width,
-            ),
-            self.clamp(
-                self.emotion[2] / 100 * self.size[1],
-                self.lip_width,
-                self.size[1] - self.lip_width,
-            ),
-            self.clamp(
-                self.emotion[4] / 100 * self.size[1],
-                self.lip_width,
-                self.size[1] - self.lip_width,
-            ),
-        ]
+        ox, oy = offset
+        left, center, right = (
+            (x + ox, y + oy) for x, y in self.control_points()
+        )
+        points = through_point_bezier(left, center, right, 50)
 
-        x_points = self.fix_x_points(x_points)
-
-        x_key = tuple(x_points)
-        if x_key != self._curve_basis_key:
-            self._curve_x, self._curve_weights = quadratic_basis(x_points, 50)
-            self._curve_basis_key = x_key
-        points = sample_quadratic(self._curve_x, self._curve_weights, y_points)
-
-        # guarda en caché
         self._cache_key = key
         self._cached_points = points
         return points
@@ -104,13 +86,12 @@ class Lip:
         if size != self.size:
             self.size = size
             self._cache_key = None
-            self._curve_basis_key = None
 
     def update(self):
         pass
 
-    def draw(self, surface):
-        points = self.lip_shape()
+    def draw(self, surface, offset=(0, 0)):
+        points = self.lip_shape(offset)
         pygame.draw.lines(surface, self.color, False, points, self.lip_width)
 
     def handle_event(self, event):
@@ -127,10 +108,11 @@ class Mouth:
         self.size = size
         self.position = position
         self.color = self.settings["bg_color"]
-
-        # superficie persistente, SRCALPHA para fondo transparente
-        self.surface = pygame.Surface(self.size, pygame.SRCALPHA)
-        self._layout_dirty = False  # marca recreación de superficie
+        # Margen transparente alrededor del contenedor (fracción de su tamaño)
+        # donde los labios pueden dibujarse fuera de él sin recortarse.
+        self.render_overflow = float(self.settings.get("render_overflow", 0.5))
+        if self.render_overflow < 0:
+            raise ValueError("render_overflow cannot be negative")
 
         # Labios
         self.top_lip = Lip(
@@ -146,6 +128,10 @@ class Mouth:
             object_name=f"{object_name} - Bot Lip",
         )
 
+        # superficie persistente con margen, SRCALPHA para fondo transparente
+        self.surface = pygame.Surface(self._surface_size(), pygame.SRCALPHA)
+        self._layout_dirty = False  # marca recreación de superficie
+
         # Parámetros de habla
         self.talking_amplitude = self.settings["talking_amplitude"]
         self.talking_speed = self.settings["talking_speed"]
@@ -153,6 +139,17 @@ class Mouth:
         self.is_talking = False
 
     # --------------------------------------------------------------------- tamaño / posición
+    def padding(self):
+        """Margen (x, y) en píxeles entre la superficie y el contenedor."""
+        lip_width = max(self.top_lip.lip_width, self.bot_lip.lip_width)
+        return tuple(
+            int(math.ceil(self.render_overflow * length + lip_width)) for length in self.size
+        )
+
+    def _surface_size(self):
+        pad_x, pad_y = self.padding()
+        return self.size[0] + 2 * pad_x, self.size[1] + 2 * pad_y
+
     def set_size(self, size):
         if size != self.size:
             self.size = size
@@ -166,13 +163,17 @@ class Mouth:
     # --------------------------------------------------------------------- draw / update
     def draw(self, surface):
         if self._layout_dirty:
-            self.surface = pygame.Surface(self.size, pygame.SRCALPHA)
+            self.surface = pygame.Surface(self._surface_size(), pygame.SRCALPHA)
             self._layout_dirty = False
 
-        self.surface.fill(self.color)
-        self.top_lip.draw(self.surface)
-        self.bot_lip.draw(self.surface)
-        surface.blit(self.surface, self.position)
+        pad_x, pad_y = self.padding()
+        # Solo el contenedor lleva fondo; el margen es transparente para no
+        # tapar ojos ni cara cuando los labios salen del contenedor.
+        self.surface.fill((0, 0, 0, 0))
+        self.surface.fill(self.color, pygame.Rect(pad_x, pad_y, *self.size))
+        self.top_lip.draw(self.surface, (pad_x, pad_y))
+        self.bot_lip.draw(self.surface, (pad_x, pad_y))
+        surface.blit(self.surface, (self.position[0] - pad_x, self.position[1] - pad_y))
 
     def update(self):
         self.top_lip.update()

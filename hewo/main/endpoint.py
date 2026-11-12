@@ -40,7 +40,12 @@ class ServerEndPoint:
                 return jsonify({"status": "error", "message": "No valid layout for setting emotion"}), 400
             try:
                 data = request.get_json()
-                layout.set_emotion_goal(data)
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                data = dict(data)
+                # Optional: apply the goal on the next frame instead of stepping.
+                immediate = data.pop("immediate", False)
+                layout.set_emotion_goal(data, immediate=immediate)
                 return jsonify({"status": "success"}), 200
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 400

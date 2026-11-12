@@ -1,6 +1,5 @@
 import pygame
 import copy
-import random
 import math
 import threading
 from numbers import Real
@@ -73,9 +72,6 @@ class Face:
             settings=copy.deepcopy(self.settings["mouth"]),
             object_name="Mouth",
         )
-        # -------------------------------------------------- blink
-        self.blink_timer = 0
-        self.blink_interval = random.randint(300, 700)
 
     # ------------------------------------------------------------------ layout helper
     def _refresh_child_sizes_positions(self):
@@ -455,14 +451,6 @@ class Face:
 
     # ------------------------------------------------------------------ núcleo de actualización
     def _core_update(self):
-        # parpadeo aleatorio
-        self.blink_timer += 1
-        if self.blink_timer >= self.blink_interval:
-            self.left_eye.trigger_blink()
-            self.right_eye.trigger_blink()
-            self.blink_timer = 0
-            self.blink_interval = random.randint(300, 700)
-
         # relayout si es necesario
         if self._layout_dirty:
             self._update_layout()
