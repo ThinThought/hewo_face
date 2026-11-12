@@ -118,6 +118,13 @@ class ServerEndPoint:
                 return error
             return jsonify({"status": "success", "pose": layout.get_pose()}), 200
 
+        @self.app.route('/hewo/get_position_bounds', methods=['GET'])
+        def get_position_bounds():
+            layout, error = self.require_layout_method('get_position_bounds')
+            if error:
+                return error
+            return jsonify({"status": "success", "bounds": layout.get_position_bounds()}), 200
+
         @self.app.route('/hewo/toggle_talk', methods=['POST'])
         def toggle_talk():
             layout, error = self.require_layout_method('toggle_talk')

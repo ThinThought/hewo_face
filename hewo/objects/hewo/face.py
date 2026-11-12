@@ -25,6 +25,7 @@ class Face:
         self.size = [int(PHI * self.size_factor), int(self.size_factor)]
         self.position = self.settings["face"]["position"]
         self.boundary = self.settings["face"]["boundary"]
+        self.boundary_margin = float(self.settings["face"].get("boundary_margin", 0))
         self.spherical = copy.deepcopy(self.settings["face"].get("spherical", {}))
         self.spherical_enabled = self.spherical.get("enabled", True)
         self.sphere_radius = float(self.spherical.get("radius", 190.0))
@@ -104,15 +105,57 @@ class Face:
     # ------------------------------------------------------------------ setters públicos
     def set_size(self, size_factor):
         if self.min_size_factor <= size_factor <= self.max_size_factor:
-            self.size_factor = size_factor
-            self.size = [int(PHI * size_factor), int(size_factor)]
-            self._layout_dirty = True
+            with self._pose_lock:
+                self.size_factor = size_factor
+                self.size = [int(PHI * size_factor), int(size_factor)]
+                self._layout_dirty = True
+                self.set_boundary(self.boundary)
 
 
     def set_position(self, pos):
         with self._pose_lock:
-            self.position[0] = max(0, min(pos[0], self.boundary[0] - self.size[0]))
-            self.position[1] = max(0, min(pos[1], self.boundary[1] - self.size[1]))
+            self.position[0] = max(0, min(pos[0], self.boundary[0] - self.size[0] - self.boundary_margin))
+            self.position[1] = max(0, min(pos[1], self.boundary[1] - self.size[1] - self.boundary_margin))
+
+    def set_boundary(self, boundary):
+        """Update available render area and keep current and queued XY inside it."""
+        width, height = (max(0.0, float(value)) for value in boundary)
+        with self._pose_lock:
+            self.boundary = [width, height]
+            max_x = max(0.0, width - self.size[0] - self.boundary_margin)
+            max_y = max(0.0, height - self.size[1] - self.boundary_margin)
+            self.position[0] = max(0.0, min(float(self.position[0]), max_x))
+            self.position[1] = max(0.0, min(float(self.position[1]), max_y))
+            for axis, maximum in (("x", max_x), ("y", max_y)):
+                self._position_goals[axis] = max(0.0, min(self._position_goals[axis], maximum))
+
+    def on_window_resized(self, boundary):
+        """Fit the face inside half the window and recenter it after a resize."""
+        width, height = (max(0.0, float(value)) for value in boundary)
+        with self._pose_lock:
+            self.boundary = [width, height]
+            desired_factor = min(width * 0.5 / PHI, height * 0.5)
+            # Window fitting takes precedence over the manual size controls so
+            # the face remains half-window sized on both small and large displays.
+            self.size_factor = max(1.0, desired_factor)
+            self.size = [int(PHI * self.size_factor), int(self.size_factor)]
+            self._layout_dirty = True
+            center = (
+                max(0.0, (width - self.size[0]) / 2),
+                max(0.0, (height - self.size[1]) / 2),
+            )
+            self.set_position(center)
+            for axis in ("x", "y"):
+                self._position_goals[axis] = self._position_component(axis)
+                self._position_speeds[axis] = None
+
+    def get_position_bounds(self):
+        with self._pose_lock:
+            return {"x": {"min": 0.0, "max": max(0.0, self.boundary[0] - self.size[0] - self.boundary_margin)},
+                    "y": {"min": 0.0, "max": max(0.0, self.boundary[1] - self.size[1] - self.boundary_margin)},
+                    "window": {"width": self.boundary[0], "height": self.boundary[1]},
+                    "face": {"width": self.size[0], "height": self.size[1]},
+                    "margin": self.boundary_margin}
 
     @staticmethod
     def _add(a, b):
@@ -208,9 +251,9 @@ class Face:
             for axis, value in values.items():
                 value = self._finite_number(value, axis)
                 if axis == "x":
-                    value = max(0.0, min(value, self.boundary[0] - self.size[0]))
+                    value = max(0.0, min(value, self.boundary[0] - self.size[0] - self.boundary_margin))
                 elif axis == "y":
-                    value = max(0.0, min(value, self.boundary[1] - self.size[1]))
+                    value = max(0.0, min(value, self.boundary[1] - self.size[1] - self.boundary_margin))
                 else:
                     value = max(value, self._minimum_camera_distance())
                 self._position_goals[axis] = value
