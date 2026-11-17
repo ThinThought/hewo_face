@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+import pygame
 
 from hewo.main.window import MainWindow
 from hewo.settings import SettingsLoader
@@ -64,6 +65,73 @@ class ProjectBoundaryTests(unittest.TestCase):
         with patch("pygame.display.flip"):
             window.draw()
         self.assertEqual(window.screen.fills, 0)
+
+    def test_fullscreen_resize_notification_without_w_h_keeps_fullscreen_surface(self):
+        class Screen:
+            def get_size(self):
+                return (1920, 1080)
+
+        class Layout:
+            boundary = None
+
+            def set_boundary(self, boundary):
+                self.boundary = boundary
+
+            def handle_event(self, event):
+                pass
+
+        window = MainWindow.__new__(MainWindow)
+        screen = Screen()
+        layout = Layout()
+        window.screen = screen
+        window.settings = {"deploy": True}
+        window.window_size = (1920, 1080)
+        window.active_layout = "hewo"
+        window.layout_dict = {"hewo": layout}
+        resize_event = pygame.event.Event(pygame.WINDOWRESIZED, {"x": 1920, "y": 1080})
+        with patch("pygame.event.get", return_value=[resize_event]), patch(
+            "pygame.display.get_surface", return_value=screen
+        ), patch("pygame.display.set_mode") as set_mode:
+            window.handle_events()
+        set_mode.assert_not_called()
+        self.assertIs(window.screen, screen)
+        self.assertEqual(layout.boundary, (1920, 1080))
+
+    def test_only_changed_window_size_triggers_layout_resize_callback(self):
+        class Screen:
+            def __init__(self, size):
+                self.size = size
+
+            def get_size(self):
+                return self.size
+
+        class Layout:
+            def __init__(self):
+                self.resized = []
+
+            def on_window_resized(self, size):
+                self.resized.append(size)
+
+            def set_boundary(self, size):
+                pass
+
+            def handle_event(self, event):
+                pass
+
+        window = MainWindow.__new__(MainWindow)
+        layout = Layout()
+        window.screen = Screen((800, 600))
+        window.window_size = (800, 600)
+        window.settings = {"deploy": False, "vsync": False}
+        window.active_layout = "hewo"
+        window.layout_dict = {"hewo": layout}
+        resized_surface = Screen((1000, 700))
+        event = pygame.event.Event(pygame.VIDEORESIZE, {"w": 1000, "h": 700})
+        with patch("pygame.event.get", return_value=[event]), patch(
+            "pygame.display.set_mode", return_value=resized_surface
+        ):
+            window.handle_events()
+        self.assertEqual(layout.resized, [(1000, 700)])
 
 
 if __name__ == "__main__":

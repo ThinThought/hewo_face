@@ -25,6 +25,10 @@ class EmotionMapper:
 
     Partial goal updates are supported; omitted parameters retain their current
     goal. Returned mappings are copies so callers cannot mutate state by alias.
+
+    Goals normally advance ``emotion_step`` units per update. Goals set with
+    ``immediate=True`` are applied on the next update instead (useful for live
+    sources such as face mimicry that already smooth their values).
     """
 
     keys = EMOTION_KEYS
@@ -35,6 +39,7 @@ class EmotionMapper:
         self.emotion_step = emotion_step
         self.initial_emotion = dict(DEFAULT_EMOTION)
         self._emotion_goal = dict(DEFAULT_EMOTION)
+        self._immediate_keys = set()
 
     @property
     def emotion_goal(self):
@@ -53,14 +58,20 @@ class EmotionMapper:
         normalized = max(0, min(100, value))
         return int(normalized) if float(normalized).is_integer() else normalized
 
-    def set_goal(self, values):
+    def set_goal(self, values, immediate=False):
         if not isinstance(values, Mapping):
             raise ValueError("Emotion goal must be a mapping")
         unknown = set(values) - set(self.keys)
         if unknown:
             raise ValueError(f"Unknown emotion parameter(s): {', '.join(sorted(unknown))}")
+        if not isinstance(immediate, bool):
+            raise ValueError("'immediate' must be boolean")
         normalized = {key: self._normalize_value(key, value) for key, value in values.items()}
         self._emotion_goal.update(normalized)
+        if immediate:
+            self._immediate_keys.update(normalized)
+        else:
+            self._immediate_keys.difference_update(normalized)
         return self.emotion_goal
 
     def adjust_goal(self, key, delta):
@@ -97,7 +108,8 @@ class EmotionMapper:
 
     def _transition_values(self, current):
         next_values = {
-            key: current[key] + max(-self.emotion_step, min(self.emotion_step, self._emotion_goal[key] - current[key]))
+            key: self._emotion_goal[key] if key in self._immediate_keys
+            else current[key] + max(-self.emotion_step, min(self.emotion_step, self._emotion_goal[key] - current[key]))
             for key in self.keys
         }
         diffs = [self._emotion_goal[key] - next_values[key] for key in self.keys]
@@ -110,12 +122,15 @@ class EmotionMapper:
         current = self.get_emotion(hewo)
         if all(current[key] == self._emotion_goal[key] for key in self.keys):
             return
+        applied = set(self._immediate_keys)  # goals may arrive from the API thread
         new_emotion, _ = self._transition_values(current)
         self.set_emotion(hewo, new_emotion)
+        self._immediate_keys -= applied
 
     def set_random_emotion(self):
         self.set_goal({key: random.randint(0, 100) for key in self.keys})
 
     def reset_emotion(self):
         self._emotion_goal = dict(self.initial_emotion)
+        self._immediate_keys.clear()
         return self.emotion_goal

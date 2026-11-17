@@ -92,6 +92,9 @@ class Eye:
         if not self.blinking:
             self.blinking = True
             self.blink_phase = 0
+            # Sin copia a propósito: la animación modifica estas listas in situ,
+            # lo que acelera el cierre y deja el ojo cerrado al terminar; el
+            # EmotionMapper lo reabre después de forma gradual hacia su objetivo.
             self.original_top = self.top_lash.get_emotion()
             self.original_bot = self.bot_lash.get_emotion()
 

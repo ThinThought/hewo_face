@@ -1,6 +1,9 @@
 mouth:
   talking_amplitude: 50
   talking_speed: 10
+  # Margen (fracción del tamaño de la boca) donde los labios pueden dibujarse
+  # fuera de su contenedor; los emotion points siguen confinados a 0..100.
+  render_overflow: 0.5
   bg_color:
     - 100
     - 139

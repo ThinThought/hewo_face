@@ -70,6 +70,7 @@ If launched with the REST endpoint enabled, the following routes are available:
 | `/hewo/set_position_goal`      | POST   | Moves the face toward an XYZ goal    |
 | `/hewo/set_surface_goal`       | POST   | Moves/rotates the face on the sphere |
 | `/hewo/get_pose`               | GET    | Retrieves current and target pose    |
+| `/hewo/get_position_bounds`    | GET    | Retrieves current valid XY limits    |
 | `/hewo/set_size`               | POST   | Sets global face size                |
 | `/hewo/toggle_talk`            | POST   | Starts or stops talking animation    |
 | `/hewo/trigger_blink`          | POST   | Triggers a blink                     |
@@ -137,6 +138,12 @@ curl -X POST "$BASE_URL/hewo/set_position_goal" \
 `[-pi/2, pi/2]` and the angular values wrap around at `pi`.
 
 `GET /hewo/get_pose` returns both the current pose and its active goals.
+`GET /hewo/get_position_bounds` returns the live window size, face size, margin,
+and valid inclusive X/Y ranges. The limits are recalculated after a resizable
+window changes size; current positions and in-flight XY goals are clamped at once.
+On an actual resize, HeWo is recentered and scaled to fit within half the window
+while preserving its proportions. Repeated size notifications that do not change
+the window dimensions do not alter HeWo's size or position.
 
 ```bash
 curl -X POST "$BASE_URL/hewo/set_surface_goal" \

@@ -147,5 +147,29 @@ class EmotionMapperTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+    def test_immediate_goals_skip_the_step_transition(self):
+        mapper = EmotionMapper(emotion_step=5)
+        face = Face()
+        mapper.set_emotion(face, mapper.emotion_goal)
+        mapper.set_goal({"tl_c": 20, "bl_c": 0}, immediate=True)
+        mapper.set_goal({"bl_a": 50})
+        mapper.update_emotion(face)
+        emotion = mapper.get_emotion(face)
+        self.assertEqual((emotion["tl_c"], emotion["bl_c"]), (20, 0))
+        self.assertEqual(emotion["bl_a"], 5)
+
+    def test_non_immediate_goal_cancels_a_pending_immediate_one(self):
+        mapper = EmotionMapper(emotion_step=5)
+        face = Face()
+        mapper.set_emotion(face, mapper.emotion_goal)
+        mapper.set_goal({"tl_c": 20}, immediate=True)
+        mapper.set_goal({"tl_c": 20})
+        mapper.update_emotion(face)
+        self.assertEqual(mapper.get_emotion(face)["tl_c"], 95)
+
+    def test_immediate_must_be_boolean(self):
+        with self.assertRaises(ValueError):
+            EmotionMapper().set_goal({"tl_c": 20}, immediate="yes")
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,7 +40,12 @@ class ServerEndPoint:
                 return jsonify({"status": "error", "message": "No valid layout for setting emotion"}), 400
             try:
                 data = request.get_json()
-                layout.set_emotion_goal(data)
+                if not isinstance(data, dict):
+                    raise ValueError("Request body must be a JSON object")
+                data = dict(data)
+                # Optional: apply the goal on the next frame instead of stepping.
+                immediate = data.pop("immediate", False)
+                layout.set_emotion_goal(data, immediate=immediate)
                 return jsonify({"status": "success"}), 200
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 400
@@ -117,6 +122,13 @@ class ServerEndPoint:
             if error:
                 return error
             return jsonify({"status": "success", "pose": layout.get_pose()}), 200
+
+        @self.app.route('/hewo/get_position_bounds', methods=['GET'])
+        def get_position_bounds():
+            layout, error = self.require_layout_method('get_position_bounds')
+            if error:
+                return error
+            return jsonify({"status": "success", "bounds": layout.get_position_bounds()}), 200
 
         @self.app.route('/hewo/toggle_talk', methods=['POST'])
         def toggle_talk():
